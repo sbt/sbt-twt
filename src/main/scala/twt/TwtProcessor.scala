@@ -28,7 +28,8 @@ class TwitterProcessor extends Processor {
     scan(arg.trim) match {
       case Left(msg) => project.log.error(msg)
       case Right(symbols) =>
-        conf.createNewFile()
+        if (!conf.exists) buildDefaultConfig()
+
         C.configure(conf.getPath)
 
         val token = Token(C.config.configMap("access").asMap)
@@ -189,6 +190,18 @@ class TwitterProcessor extends Processor {
         println(message) // for you sir!
     }
   }         // get_authorization
+
+  def buildDefaultConfig() {
+    conf.createNewFile()
+    val conf_writer = new java.io.FileWriter(conf)
+    conf_writer write (
+    """ |<log>
+        |  level = "ERROR"
+        |  console = true
+        |</log>""".stripMargin
+    )
+    conf_writer.close
+  }
 
   trait Symbol { val value: String }
   case class Unquoted(value: String) extends Symbol
