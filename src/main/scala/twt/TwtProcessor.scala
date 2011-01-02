@@ -25,29 +25,45 @@ class TwitterProcessor extends Processor {
     project.log.debug("TwitterProcessor(%s, %s, %s, %s)".format(label, project, onFailure, arg))
     def succeed(cmds: String*) = new Success(project, onFailure, cmds: _*)
 
-    // create config file if it doesn't exist
-    conf.createNewFile()
-    // read config file to C.config
-    C.configure(conf.getPath)
+    scan(arg.trim) match {
+      case Left(msg) => project.log.error(msg)
+      case Right(symbols) =>
+        conf.createNewFile()
+        C.configure(conf.getPath)
 
-    val words = (label.trim split "\\s+").toList.tail
-    (words, Token(C.config.configMap("access").asMap)) match {
-      case (Nil, Some(tok: Token)) => friendsTimeline(tok)
+        val token = Token(C.config.configMap("access").asMap)
 
-      case (List("clearauth"), _)      =>
-        conf.delete()
-        println("OAuth credentials deleted.")
+        symbols match {
+          case Nil => usage
 
-      case (xs, Some(tok: Token))  =>
-        Some(xs mkString " ") map { tweet =>
-          if (tweet.length > 140) "%d characters? This is Twitter not NY Times Magazine." format tweet.length
-          else commit(tweet, tok)
-        } getOrElse {""}
+          case Unquoted("clearautho") :: Nil =>
+            conf.delete()
+            println("OAuth credentials deleted.")
 
-      case (xs, _)                 => get_authorization(xs)
+          case Unquoted("log") :: Nil => token map {
+              friendsTimeline
+            } getOrElse { get_authorization(symbols) }
+
+          case Unquoted("commit") :: Quoted(tweet) :: Nil => token map { tok =>
+              commit(tweet, tok)
+            } getOrElse { get_authorization(symbols) }
+
+          case Unquoted("pin") :: Unquoted(pin) :: Nil => get_authorization(symbols)
+          case Unquoted("pin") :: Quoted(pin) :: Nil => get_authorization(symbols)
+
+          case xs => usage
+        }
     }
 
     succeed()
+  }
+
+  def usage {
+    println("usage: twt <command>")
+    println("  twt log              : prints your timeline except for RTs.")
+    println("  twt commit \"tweet!\": tweets quoted string.")
+    println("  twt pin 123456       : authorizes twt to access twitter.")
+    println("  twt clearauth        : clears the authorization.")
   }
 
   def friendsTimeline(token: Token) {
@@ -60,7 +76,7 @@ class TwitterProcessor extends Processor {
   }
 
   def commit(tweet: String, token: Token): String =
-    if (true) "test: " + tweet
+    if (tweet.length > 140) "%d characters?" format tweet.length
     else http(Status.update(tweet, consumer, token) ># { js =>
       // handling the Status.update response as JSON, we take what we want
       val Status.user.screen_name(screen_name) = js
@@ -90,22 +106,24 @@ class TwitterProcessor extends Processor {
   }
 
   // oauth sesame
-  def get_authorization(words: List[String]) = {
+  def get_authorization(words: List[Symbol]) = {
+
+    def validate(pin: String, token: Token) = try {
+      // exchange it for an access token
+      http(Auth.access_token(consumer, token, pin)) match {
+        case (access_tok, _, screen_name) =>
+          // nb: we're producing a message, a token type name, and the token itself
+          ("Approved! It's tweetin' time, %s." format screen_name, Some(("access", access_tok)))
+      }
+    } catch {
+        case StatusCode(401, _) =>  ("Rats! That PIN %s doesn't seem to match." format pin, None)
+    }
+
     // this time we are matching against a potential request token
     ((words, Token(C.config.configMap("request").asMap)) match {
-      // one parameter that must be the verifier, and there's a request token
-      case (List(verifier), Some(tok: Token)) => try {
-        // exchange it for an access token
-        http(Auth.access_token(consumer, tok, verifier)) match {
-          case (access_tok, _, screen_name) =>
-            // nb: we're producing a message, a token type name, and the token itself
-            ("Approved! It's tweetin' time, %s." format screen_name, Some(("access", access_tok)))
-        } } catch {
-          // accidents happen
-          case StatusCode(401, _) =>
-            // no token for you
-            ("Rats! That PIN %s doesn't seem to match." format verifier, None)
-        }
+      case (Unquoted("pin") :: Unquoted(pin) :: Nil, Some(token: Token)) => validate(pin, token)
+      case (Unquoted("pin") :: Quoted(pin) :: Nil, Some(token: Token)) => validate(pin, token)
+
       // there wasn't a parameter so who cares if we have a request token, just get a new one
       case _ =>
         // a request token for the twt application, kthxbai
@@ -139,7 +157,7 @@ class TwitterProcessor extends Processor {
         // let us also take this opportunity to set the log level
         conf_writer write (
         """ |<log>
-            |  level = "WARNING"
+            |  level = "ERROR"
             |  console = true
             |</log>
             |<%s>
@@ -151,5 +169,76 @@ class TwitterProcessor extends Processor {
         message // for you sir!
     }
   }         // get_authorization
+
+  trait Symbol { val value: String }
+  case class Unquoted(value: String) extends Symbol
+  case class Quoted(value: String) extends Symbol
+  abstract class ScanState
+  case object NoWord extends ScanState
+  case object InSQ extends ScanState
+  case object InDQ extends ScanState
+  case object InWord extends ScanState
+  case object EndWord extends ScanState
+  case class ScanError(value: String) extends ScanState
+  def scan(input: String): Either[String, List[Symbol]] = {
+    var word = new StringBuilder
+    val words = new scala.collection.mutable.ListBuffer[Symbol]
+    val it = input.elements
+    var state: ScanState = NoWord
+
+    def grab(st: ScanState) {
+      words append Quoted(word.toString)
+      word = new StringBuilder
+      state = st
+    }
+
+    def unescape(c: Char) {
+      c match {
+        case '\\' if !it.hasNext => state = ScanError("Unexpected \\")
+        case '\\'                => it.next match {
+          case '\\' => word += '\\'
+          case 'n'  => word += '\n'
+          case 't'  => word += '\t'
+          case 'r'  => word += '\r'
+          case '\'' => word += '\''
+          case '\"' => word += '\"'
+          case x    => word += x
+        }
+        case x                   => word += x
+      }
+    }
+
+    while (it.hasNext) {
+      (it.next, state) match {
+        case (x, NoWord) if x == '\''       => state = InSQ
+        case (x, NoWord) if x == '\"'       => state = InDQ
+        case (x, NoWord) if x.isWhitespace  => // nothing
+        case (x, NoWord)                    => word += x
+                                               state = InWord
+        case (x, InSQ) if x == '\''         => grab(EndWord)
+        case (x, InSQ)                      => unescape(x)
+        case (x, InDQ) if x == '\"'         => grab(EndWord)
+        case (x, InDQ)                      => unescape(x)
+        case (x, InWord) if x == '\''       => state = ScanError("Unexpected \'")
+        case (x, InWord) if x == '\"'       => state = ScanError("Unexpected \"")
+        case (x, InWord) if x.isWhitespace  => grab(NoWord)
+        case (x, InWord)                    => word += x
+        case (x, EndWord) if x.isWhitespace => state = NoWord
+        case (x, EndWord)                   => state = ScanError("Expected space but met " + x)
+        case _ =>
+      }
+    }
+
+    state match {
+      case InSQ         => Left("Expected \' but met EOL")
+      case InDQ         => Left("Expected \" but met EOL")
+      case e: ScanError => Left(e.value)
+      case _ =>
+        if (!word.toString.isEmpty)
+          words append Unquoted(word.toString)
+
+        Right(words.toList)
+    }
+  }
 }
 
