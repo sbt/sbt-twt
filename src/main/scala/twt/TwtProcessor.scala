@@ -31,42 +31,44 @@ class TwitterProcessor extends Processor {
     C.configure(conf.getPath)
 
     val words = (label.trim split "\\s+").toList.tail
+    (words, Token(C.config.configMap("access").asMap)) match {
+      case (Nil, Some(tok: Token)) => friendsTimeline(tok)
 
-    println(words.toString)
+      case (List("clearauth"), _)      =>
+        conf.delete()
+        println("OAuth credentials deleted.")
 
-    // This is it, people. All paths return to println with a message for the user,
-    // except `cat` which doesn't. We're going to pattern-match against both the
-    // parameter sequence and a Token that is either there or not there. The
-    // dispatch.oauth.Token(m: Map[...]) method knows about maps with token keys
-    // in them. If these are present under "access", we'll get Some(token)
-    println( (words, Token(C.config.configMap("access").asMap)) match {
-      // the only parameter was "reset"; ignore the token and delete the data store
-      case (List("reset"), _) => conf.delete(); "OAuth credentials deleted."
+      case (xs, Some(tok: Token))  =>
+        Some(xs mkString " ") map { tweet =>
+          if (tweet.length > 140) "%d characters? This is Twitter not NY Times Magazine." format tweet.length
+          else commit(tweet, tok)
+        } getOrElse {""}
 
-      // there are no parameters, but we have a token! Go into `cat`, forever.
-      case (Nil, Some(tok: Token)) => cat(tok)
-
-      // there are some parameters and a token, combine parameters and...
-      case (xs, Some(tok: Token)) => (xs mkString " ") match {
-        // dang tweet is too long
-        case tweet if tweet.length > 140 =>
-          "%d characters? This is Twitter not NY Times Magazine." format tweet.length
-
-//        // it looks like an okay tweet, let us post it:
-//        case tweet => http(Status.update(tweet, consumer, tok) ># { js =>
-//          // handling the Status.update response as JSON, we take what we want
-//          val Status.user.screen_name(screen_name) = js
-//          val Status.id(id) = js
-//          // this goes back to our user
-//          "Posted: " + (Twitter.host / screen_name / "status" / id.toString to_uri)
-//        })
-      }
-      // there was no access token, we must still be in the oauthorization process
-      case (xs, _) => get_authorization(xs)
-    })
+      case (xs, _)                 => get_authorization(xs)
+    }
 
     succeed()
   }
+
+  def friendsTimeline(token: Token) {
+    val messages = http(Status.friends_timeline(consumer, token, ("count", 20)))
+    for {
+      item <- messages
+      msg = Status.text(item)
+      screen_name = Status.user.screen_name(item)
+    } yield println("%-15s%s" format (screen_name.toString, msg) )
+  }
+
+  def commit(tweet: String, token: Token): String =
+    if (true) "test: " + tweet
+    else http(Status.update(tweet, consumer, token) ># { js =>
+      // handling the Status.update response as JSON, we take what we want
+      val Status.user.screen_name(screen_name) = js
+      val Status.id(id) = js
+
+      // this goes back to our user
+      "posted " + (Twitter.host / screen_name / "status" / id.toString to_uri)
+    })
 
   def cat(token: Token) {
     // get us some tweets
@@ -86,6 +88,7 @@ class TwitterProcessor extends Processor {
         println("%-15s%s" format (name, text) )
     })
   }
+
   // oauth sesame
   def get_authorization(words: List[String]) = {
     // this time we are matching against a potential request token
