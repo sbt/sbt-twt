@@ -2,7 +2,7 @@ sbt-twt
 =======
 
 sbt-twt is a twitter processor for [simple-built-tool (sbt)][2], forked from @n8han's [dispatch twine][1].
-unlike sbt plugins, [processors] are installed to the sbt instance instead of described in project definitions,
+unlike sbt plugins, [processors][3] are installed to the sbt instance instead of described in project definitions,
 and they add new kind of commands, instead of new type of projects or actions that plugins give.
 
 ## install it
