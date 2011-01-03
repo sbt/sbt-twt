@@ -45,17 +45,27 @@ class TwitterProcessor extends Processor {
         symbols match {
           case Nil => usage
 
-          case Unquoted("log") :: options => token map { tok =>
-              homeTimeline(count(options), tok)
+          case Unquoted("log") :: options => token map { t => implicit val tok = t
+              homeTimeline(count(options))
             } getOrElse { get_authorization(symbols) }
 
-          case Unquoted(s) :: Quoted(tweet) :: Nil if commitCmd contains s => token map { tok =>
-              commit(tweet, tok)
+          case Unquoted(s) :: Quoted(tweet) :: Nil if commitCmd contains s => token map { t => implicit val tok = t
+              commit(tweet)
             } getOrElse { get_authorization(symbols) }
 
-          case Unquoted("rt") :: Symbol(id) :: Nil if id matches """\d+""" => token map { tok =>
-              retweet(BigDecimal(id), tok)
+          case Unquoted("rt") :: Symbol(id) :: Nil if id matches """\d+""" => token map { t => implicit val tok = t
+              postRequest("retweeted", Status / "retweet/%s.json".format(id.toString))
             } getOrElse { get_authorization(symbols) }
+
+          case Unquoted("fav") :: Symbol(id) :: Nil if id matches """\d+""" => token map { t => implicit val tok = t
+              postRequest("faved", Twitter.host / "favorites/create/%s.json".format(id.toString))
+            } getOrElse { get_authorization(symbols) }
+
+          case Unquoted("fav") :: Symbol(id) :: DashValue("d") :: Nil if id matches """\d+""" => token map { t =>
+               implicit val tok = t
+               postRequest("unfaved", Twitter.host / "favorites/destroy/%s.json".format(id.toString))
+             } getOrElse { get_authorization(symbols) }
+
 
           case Unquoted(s) :: Symbol(q) :: options if grepCmd contains s => grep(q, count(options))
 
@@ -84,11 +94,12 @@ class TwitterProcessor extends Processor {
     println("  twt grep #scala [-12]    : searches for #scala. also as twt ?")
     println("  twt commit \"tweet!\"      : tweets quoted string. also as twt ci.")
     println("  twt rt 21499972767715328 : retweets the tweet with given id.")
+    println("  twt fav <id> [-d]        : faves/unfaves the tweet with given id.")
     println("  twt pin 1234567          : authorizes twt to access twitter.")
     println("  twt clearauth            : clears the authorization.")
   }
 
-  def homeTimeline(count: Int, token: Token) {
+  def homeTimeline(count: Int)(implicit token: Token) {
     for {
       item <- http(Status / "home_timeline.json" <<? Map("count" -> count)
         <@ (consumer, token) ># (list ! obj) )
@@ -106,7 +117,7 @@ class TwitterProcessor extends Processor {
         formatTweet(id, msg, screen_name) } map { println }
   }
 
-  def friendsTimeline(count: Int, token: Token) {
+  def friendsTimeline(count: Int)(implicit token: Token) {
     val messages = http(Status.friends_timeline(consumer, token, ("count", count)))
     for {
       item <- messages
@@ -141,7 +152,7 @@ class TwitterProcessor extends Processor {
     } yield (formatTweet(id, msg, from_user) map { println })
   }
 
-  def commit(tweet: String, token: Token) {
+  def commit(tweet: String)(implicit token: Token) {
     if (tweet.length > 140) println("%d characters?" format tweet.length)
     else http(Status.update(tweet, consumer, token) ># { js =>
       println("posted " + statusUri(js)) })
@@ -153,12 +164,11 @@ class TwitterProcessor extends Processor {
     home / screen_name / "status" / id.toString to_uri
   }
 
-  def retweet(id: BigDecimal, token: Token) {
-    http(Status / "retweet/%s.json".format(id.toString) << Map.empty[String, Any] <@ (consumer, token) ># { js =>
-      println("retweeted " + statusUri(js)) })
-  }
+  def postRequest(verb: String, req: Request)(implicit token: Token) =
+    http(req << Map.empty[String, Any] <@ (consumer, token) ># { js =>
+      println(verb + " " + statusUri(js)) })
 
-  def cat(token: Token) {
+  def cat(implicit token: Token) {
     // get us some tweets
     http(UserStream.open(consumer, token, None) { message =>
       import net.liftweb.json.JsonAST._
