@@ -53,26 +53,25 @@ class TwitterProcessor extends Processor {
               commit(tweet)
             } getOrElse { get_authorization(symbols) }
 
-          case Unquoted("rt") :: Symbol(id) :: Nil if id matches """\d+""" => token map { t => implicit val tok = t
+          case Unquoted("rt") :: UnquotedNumber(id) :: Nil => token map { t => implicit val tok = t
               postRequest("retweeted", Status / "retweet/%s.json".format(id.toString))
             } getOrElse { get_authorization(symbols) }
 
-          case Unquoted("fav") :: Symbol(id) :: Nil if id matches """\d+""" => token map { t => implicit val tok = t
+          case Unquoted("fav") :: UnquotedNumber(id) :: Nil => token map { t => implicit val tok = t
               postRequest("faved", Twitter.host / "favorites/create/%s.json".format(id.toString))
             } getOrElse { get_authorization(symbols) }
 
-          case Unquoted("fav") :: Symbol(id) :: DashValue("d") :: Nil if id matches """\d+""" => token map { t =>
+          case Unquoted("fav") :: UnquotedNumber(id) :: DashValue("d") :: Nil => token map { t =>
                implicit val tok = t
                postRequest("unfaved", Twitter.host / "favorites/destroy/%s.json".format(id.toString))
              } getOrElse { get_authorization(symbols) }
-
 
           case Unquoted(s) :: Symbol(q) :: options if grepCmd contains s => grep(q, count(options))
 
           case Unquoted("clearauth") :: Nil =>
             conf.delete()
             println("OAuth credentials deleted.")
-          case Unquoted("pin") :: Symbol(pin) :: Nil => get_authorization(symbols)
+          case Unquoted("pin") :: UnquotedNumber(pin) :: Nil => get_authorization(symbols)
           case xs => usage
         }
     }
@@ -80,7 +79,7 @@ class TwitterProcessor extends Processor {
     succeed()
   }
 
-  def count(options: List[Symbol]): Int = (options flatMap { // 2.7 doesn't have collect?
+  def count(options: List[Symbol]): BigDecimal = (options flatMap { // 2.7 doesn't have collect?
     case DashNumber(x) => Some(x)
     case _             => None
   }).toList match {
@@ -99,7 +98,7 @@ class TwitterProcessor extends Processor {
     println("  twt clearauth            : clears the authorization.")
   }
 
-  def homeTimeline(count: Int)(implicit token: Token) {
+  def homeTimeline(count: BigDecimal)(implicit token: Token) {
     for {
       item <- http(Status / "home_timeline.json" <<? Map("count" -> count)
         <@ (consumer, token) ># (list ! obj) )
@@ -117,7 +116,7 @@ class TwitterProcessor extends Processor {
         formatTweet(id, msg, screen_name) } map { println }
   }
 
-  def friendsTimeline(count: Int)(implicit token: Token) {
+  def friendsTimeline(count: BigDecimal)(implicit token: Token) {
     val messages = http(Status.friends_timeline(consumer, token, ("count", count)))
     for {
       item <- messages
@@ -143,7 +142,7 @@ class TwitterProcessor extends Processor {
     buffer.toList
   }
 
-  def grep(q: String, count: Int) {
+  def grep(q: String, count: BigDecimal) {
     for {
       item <- http(Search(q, ("show_user", "true"), ("rpp", count)))
       id = Search.id(item)

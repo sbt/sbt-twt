@@ -76,13 +76,21 @@ object Symbol {
 }
 
 object DashNumber {
-  def unapply(symbol: Symbol): Option[Int] = symbol match {
-    case DashValue(x) if x matches """\d+""" => Some(x.toInt)
-    case _                                  => None
+  def unapply(symbol: Symbol): Option[BigDecimal] = symbol match {
+    case DashValue(x) if x matches """\d+""" => Some(BigDecimal(x))
+    case _                                   => None
   }
 }
 
 case class Unquoted(value: String) extends Symbol
+
+object UnquotedNumber {
+  def unapply(symbol: Symbol): Option[BigDecimal] = symbol match {
+    case Unquoted(x) if x matches """\d+""" => Some(BigDecimal(x))
+    case _                                  => None
+  }
+}
+
 case class Quoted(value: String) extends Symbol
 case class DashValue(value: String) extends Symbol
 
