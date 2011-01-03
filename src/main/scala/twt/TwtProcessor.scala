@@ -36,6 +36,9 @@ class TwitterProcessor extends Processor {
         C.configure(conf.getPath)
 
         val token = Token(C.config.configMap("access").asMap)
+        val commitCmd = List("commit", "ci")
+        val grepCmd = List("grep", "search", "?")
+
         project.log.debug(symbols.toString)
         symbols match {
           case Nil => usage
@@ -44,26 +47,15 @@ class TwitterProcessor extends Processor {
             conf.delete()
             println("OAuth credentials deleted.")
 
-          case Unquoted("log") :: Nil => token map { tok =>
-              homeTimeline(defaultCount, tok)
-            } getOrElse { get_authorization(symbols) }
-          case Unquoted("log") :: DashNumber(x) :: Nil => token map { tok =>
-              homeTimeline(x, tok)
+          case Unquoted("log") :: options => token map { tok =>
+              homeTimeline(count(options), tok)
             } getOrElse { get_authorization(symbols) }
 
-          case Unquoted("commit") :: Quoted(tweet) :: Nil => token map { tok =>
-              commit(tweet, tok)
-            } getOrElse { get_authorization(symbols) }
-          case Unquoted("ci") :: Quoted(tweet) :: Nil     => token map { tok =>
+          case Unquoted(s) :: Quoted(tweet) :: Nil if commitCmd contains s => token map { tok =>
               commit(tweet, tok)
             } getOrElse { get_authorization(symbols) }
 
-          case Unquoted("grep") :: Symbol(q) :: Nil                    => grep(q, defaultCount)
-          case Unquoted("grep") :: Symbol(q) :: DashNumber(x) :: Nil   => grep(q, x)
-          case Unquoted("search") :: Symbol(q) :: Nil                  => grep(q, defaultCount)
-          case Unquoted("search") :: Symbol(q) :: DashNumber(x) :: Nil => grep(q, x)
-          case Unquoted("?") :: Symbol(q)  :: Nil                      => grep(q, defaultCount)
-          case Unquoted("?") :: Symbol(q)  :: DashNumber(x) :: Nil     => grep(q, x)
+          case Unquoted(s) :: Symbol(q) :: options if grepCmd contains s => grep(q, count(options))
 
           case Unquoted("pin") :: Symbol(pin) :: Nil => get_authorization(symbols)
           case xs => usage
@@ -71,6 +63,14 @@ class TwitterProcessor extends Processor {
     }
 
     succeed()
+  }
+
+  def count(options: List[Symbol]): Int = (options flatMap { // 2.7 doesn't have collect?
+    case DashNumber(x) => Some(x)
+    case _             => None
+  }).toList match {
+    case x :: xs => x
+    case _       => defaultCount
   }
 
   def usage {
