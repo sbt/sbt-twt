@@ -52,7 +52,7 @@ and because this is not a web app, you'd need to type in a PIN number given to y
     > twt pin 8686743
 
 ## credits
-all of the heavy lifting of talking to twitter was done by @n8han's [dispatch][4] library.
+most of the heavy lifting of talking to twitter was done by @n8han's [dispatch][4] library.
 
 ## the Unicode rendering issue (mojibakeh)
 you need to add `-Dfile.encoding=UTF-8` in sbt's launch script to render non-ASCII correctly.
