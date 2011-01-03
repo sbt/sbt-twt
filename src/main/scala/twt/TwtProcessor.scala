@@ -79,11 +79,12 @@ class TwitterProcessor extends Processor {
 
   def usage {
     println("usage: twt <command>")
-    println("  twt log [-12]         : prints 12 tweets from the timeline.")
-    println("  twt grep #scala [-12] : searches for #scala. also as twt ?")
-    println("  twt commit \"tweet!\"   : tweets quoted string. also as twt ci.")
-    println("  twt pin 1234567       : authorizes twt to access twitter.")
-    println("  twt clearauth         : clears the authorization.")
+    println("  twt log [-12]            : prints 12 tweets from the timeline.")
+    println("  twt grep #scala [-12]    : searches for #scala. also as twt ?")
+    println("  twt commit \"tweet!\"      : tweets quoted string. also as twt ci.")
+    println("  twt rt 21499972767715328 : retweets the tweet with given id.")
+    println("  twt pin 1234567          : authorizes twt to access twitter.")
+    println("  twt clearauth            : clears the authorization.")
   }
 
   def homeTimeline(count: Int, token: Token) {
