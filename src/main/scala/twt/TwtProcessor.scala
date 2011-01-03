@@ -5,6 +5,7 @@ import sbt.processor._
 import dispatch._
 import json.JsHttp._
 import oauth._
+import oauth.OAuth._
 import twitter._
 
 class TwitterProcessor extends Processor {
@@ -44,10 +45,10 @@ class TwitterProcessor extends Processor {
             println("OAuth credentials deleted.")
 
           case Unquoted("log") :: Nil => token map { tok =>
-              friendsTimeline(defaultCount, tok)
+              homeTimeline(defaultCount, tok)
             } getOrElse { get_authorization(symbols) }
           case Unquoted("log") :: DashNumber(x) :: Nil => token map { tok =>
-              friendsTimeline(x, tok)
+              homeTimeline(x, tok)
             } getOrElse { get_authorization(symbols) }
 
           case Unquoted("commit") :: Quoted(tweet) :: Nil => token map { tok =>
@@ -74,24 +75,43 @@ class TwitterProcessor extends Processor {
 
   def usage {
     println("usage: twt <command>")
-    println("  twt log [-12]         : prints 12 tweets from timeline except for RTs.")
+    println("  twt log [-12]         : prints 12 tweets from the timeline.")
     println("  twt grep #scala [-12] : searches for #scala. also as twt ?")
     println("  twt commit \"tweet!\"   : tweets quoted string. also as twt ci.")
     println("  twt pin 1234567       : authorizes twt to access twitter.")
     println("  twt clearauth         : clears the authorization.")
   }
 
+  def homeTimeline(count: Int, token: Token) {
+    for {
+      item <- http(Status / "home_timeline.json" <<? Map("count" -> count)
+        <@ (consumer, token) ># (list ! obj) )
+      id = Status.id(item)
+      msg = Status.text(item)
+      screen_name = Status.user.screen_name(item)
+      retweeted_status = ('retweeted_status ?? obj) (item)
+    } yield
+      (for {
+        item <- retweeted_status
+        id = Status.id(item)
+        msg = Status.text(item)
+        screen_name = Status.user.screen_name(item)
+      } yield formatTweet(id, msg, screen_name) ) getOrElse {
+        formatTweet(id, msg, screen_name) } map { println }
+  }
+
   def friendsTimeline(count: Int, token: Token) {
     val messages = http(Status.friends_timeline(consumer, token, ("count", count)))
     for {
       item <- messages
+      id = Status.id(item)
       msg = Status.text(item)
       screen_name = Status.user.screen_name(item)
-    } yield (formatTweet(msg, screen_name) map { println })
+    } yield (formatTweet(id, msg, screen_name) map { println })
   }
 
-  def formatTweet(tweet: String, screenName: String): List[String] =
-    "* <" + screenName + ">" ::
+  def formatTweet(id: BigDecimal, tweet: String, screenName: String): List[String] =
+    "* %-22s %s".format("<" + screenName + ">", id.toString) ::
     "- " + tweet ::
     "" :: Nil
 
@@ -109,9 +129,10 @@ class TwitterProcessor extends Processor {
   def grep(q: String, count: Int) {
     for {
       item <- http(Search(q, ("show_user", "true"), ("rpp", count)))
+      id = Search.id(item)
       msg = Search.text(item)
       from_user = Search.from_user(item)
-    } yield (formatTweet(msg, from_user) map { println })
+    } yield (formatTweet(id, msg, from_user) map { println })
   }
 
   def commit(tweet: String, token: Token) {
