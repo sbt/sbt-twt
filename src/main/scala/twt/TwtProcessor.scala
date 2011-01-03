@@ -20,7 +20,7 @@ class TwitterProcessor extends Processor {
   // one single-threaded http access point, please!
   val http = new Http
 
-  val defaultCount = 20
+  val defaultCount = 12
 
   // ---BY YOUR COMMAND---
   def apply(label: String, project: Project, onFailure: Option[String], arg: String): ProcessorResult = {
@@ -74,8 +74,8 @@ class TwitterProcessor extends Processor {
 
   def usage {
     println("usage: twt <command>")
-    println("  twt log [-20]         : prints 20 tweets from timeline except for RTs.")
-    println("  twt grep #scala [-20] : searches for #scala. also as twt ?")
+    println("  twt log [-12]         : prints 12 tweets from timeline except for RTs.")
+    println("  twt grep #scala [-12] : searches for #scala. also as twt ?")
     println("  twt commit \"tweet!\"   : tweets quoted string. also as twt ci.")
     println("  twt pin 1234567       : authorizes twt to access twitter.")
     println("  twt clearauth         : clears the authorization.")

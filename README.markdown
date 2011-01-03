@@ -28,11 +28,14 @@ all you have to do now, is start up `sbt`, and in the console type `twt <command
 
     > twt
     usage: twt <command>
-      twt log             : prints your timeline except for RTs.
-      twt grep #scala     : searches for #scala. also as twt ?
-      twt commit "tweet!" : tweets quoted string. also as twt ci.
-      twt pin 1234567     : authorizes twt to access twitter.
-      twt clearauth       : clears the authorization.
+      twt log [-12]         : prints 12 tweets from timeline except for RTs.
+      twt grep #scala [-12] : searches for #scala. also as twt ?
+      twt commit "tweet!"   : tweets quoted string. also as twt ci.
+      twt pin 1234567       : authorizes twt to access twitter.
+      twt clearauth         : clears the authorization.
+    > twt grep sbt-twt -1
+    * <ymnk>
+    - RT @eed3si9n: tweeting from sbt using https://github.com/eed3si9n/sbt-twt #scala
 
 ### oauth
 since we don't want to either store passwords on machine or send them over wire, it uses OAuth.
