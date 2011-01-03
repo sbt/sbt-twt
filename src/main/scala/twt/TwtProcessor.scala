@@ -14,6 +14,7 @@ class TwitterProcessor extends Processor {
   // import all the methods, including implicit conversions, defined on dispatch.Http
   import Http._
 
+  val home = :/("twitter.com")
   // this will be our datastore
   val conf = new java.io.File(System.getProperty("user.home"), ".twt.conf")
   // OAuth application key, top-secret
@@ -43,10 +44,6 @@ class TwitterProcessor extends Processor {
         symbols match {
           case Nil => usage
 
-          case Unquoted("clearauth") :: Nil =>
-            conf.delete()
-            println("OAuth credentials deleted.")
-
           case Unquoted("log") :: options => token map { tok =>
               homeTimeline(count(options), tok)
             } getOrElse { get_authorization(symbols) }
@@ -55,8 +52,15 @@ class TwitterProcessor extends Processor {
               commit(tweet, tok)
             } getOrElse { get_authorization(symbols) }
 
+          case Unquoted("rt") :: Symbol(id) :: Nil if id matches """\d+""" => token map { tok =>
+              retweet(BigDecimal(id), tok)
+            } getOrElse { get_authorization(symbols) }
+
           case Unquoted(s) :: Symbol(q) :: options if grepCmd contains s => grep(q, count(options))
 
+          case Unquoted("clearauth") :: Nil =>
+            conf.delete()
+            println("OAuth credentials deleted.")
           case Unquoted("pin") :: Symbol(pin) :: Nil => get_authorization(symbols)
           case xs => usage
         }
@@ -142,8 +146,16 @@ class TwitterProcessor extends Processor {
       val Status.user.screen_name(screen_name) = js
       val Status.id(id) = js
 
-      // this goes back to our user
-      println("posted " + (Twitter.host / screen_name / "status" / id.toString to_uri))
+      println("posted " + (home / screen_name / "status" / id.toString to_uri))
+    })
+  }
+
+  def retweet(id: BigDecimal, token: Token) {
+    http(Status / "retweet/%s.json".format(id.toString) << Map.empty[String, Any] <@ (consumer, token) ># { js =>
+      val Status.user.screen_name(screen_name) = js
+      val Status.id(id) = js
+
+      println("retweeted " + (home / screen_name / "status" / id.toString to_uri))
     })
   }
 
@@ -182,8 +194,7 @@ class TwitterProcessor extends Processor {
 
     // this time we are matching against a potential request token
     ((words, Token(C.config.configMap("request").asMap)) match {
-      case (Unquoted("pin") :: Unquoted(pin) :: Nil, Some(token: Token)) => validate(pin, token)
-      case (Unquoted("pin") :: Quoted(pin) :: Nil, Some(token: Token)) => validate(pin, token)
+      case (Unquoted("pin") :: Symbol(pin) :: Nil, Some(token: Token)) => validate(pin, token)
 
       // there wasn't a parameter so who cares if we have a request token, just get a new one
       case _ =>
