@@ -20,6 +20,8 @@ class TwitterProcessor extends Processor {
   // one single-threaded http access point, please!
   val http = new Http
 
+  val defaultCount = 20
+
   // ---BY YOUR COMMAND---
   def apply(label: String, project: Project, onFailure: Option[String], arg: String): ProcessorResult = {
     project.log.debug("TwitterProcessor(%s, %s, %s, %s)".format(label, project, onFailure, arg))
@@ -41,27 +43,28 @@ class TwitterProcessor extends Processor {
             conf.delete()
             println("OAuth credentials deleted.")
 
-          case Unquoted("log") :: Nil => token map {
-              friendsTimeline
+          case Unquoted("log") :: Nil => token map { tok =>
+              friendsTimeline(defaultCount, tok)
+            } getOrElse { get_authorization(symbols) }
+          case Unquoted("log") :: DashNumber(x) :: Nil => token map { tok =>
+              friendsTimeline(x, tok)
             } getOrElse { get_authorization(symbols) }
 
           case Unquoted("commit") :: Quoted(tweet) :: Nil => token map { tok =>
               commit(tweet, tok)
             } getOrElse { get_authorization(symbols) }
-          case Unquoted("ci") :: Quoted(tweet) :: Nil => token map { tok =>
+          case Unquoted("ci") :: Quoted(tweet) :: Nil     => token map { tok =>
               commit(tweet, tok)
             } getOrElse { get_authorization(symbols) }
 
-          case Unquoted("grep") :: Unquoted(q) :: Nil => grep(q)
-          case Unquoted("grep") :: Quoted(q) :: Nil => grep(q)
-          case Unquoted("search") :: Unquoted(q) :: Nil => grep(q)
-          case Unquoted("search") :: Quoted(q) :: Nil => grep(q)
-          case Unquoted("?") :: Unquoted(q)  :: Nil => grep(q)
-          case Unquoted("?") :: Quoted(q) :: Nil => grep(q)
+          case Unquoted("grep") :: Symbol(q) :: Nil                    => grep(q, defaultCount)
+          case Unquoted("grep") :: Symbol(q) :: DashNumber(x) :: Nil   => grep(q, x)
+          case Unquoted("search") :: Symbol(q) :: Nil                  => grep(q, defaultCount)
+          case Unquoted("search") :: Symbol(q) :: DashNumber(x) :: Nil => grep(q, x)
+          case Unquoted("?") :: Symbol(q)  :: Nil                      => grep(q, defaultCount)
+          case Unquoted("?") :: Symbol(q)  :: DashNumber(x) :: Nil     => grep(q, x)
 
-          case Unquoted("pin") :: Unquoted(pin) :: Nil => get_authorization(symbols)
-          case Unquoted("pin") :: Quoted(pin) :: Nil => get_authorization(symbols)
-
+          case Unquoted("pin") :: Symbol(pin) :: Nil => get_authorization(symbols)
           case xs => usage
         }
     }
@@ -71,40 +74,57 @@ class TwitterProcessor extends Processor {
 
   def usage {
     println("usage: twt <command>")
-    println("  twt log             : prints your timeline except for RTs.")
-    println("  twt grep #scala     : searches for #scala. also as twt ?")
-    println("  twt commit \"tweet!\" : tweets quoted string. also as twt ci.")
-    println("  twt pin 1234567     : authorizes twt to access twitter.")
-    println("  twt clearauth       : clears the authorization.")
+    println("  twt log [-20]         : prints 20 tweets from timeline except for RTs.")
+    println("  twt grep #scala [-20] : searches for #scala. also as twt ?")
+    println("  twt commit \"tweet!\"   : tweets quoted string. also as twt ci.")
+    println("  twt pin 1234567       : authorizes twt to access twitter.")
+    println("  twt clearauth         : clears the authorization.")
   }
 
-  def friendsTimeline(token: Token) {
-    val messages = http(Status.friends_timeline(consumer, token, ("count", 20)))
+  def friendsTimeline(count: Int, token: Token) {
+    val messages = http(Status.friends_timeline(consumer, token, ("count", count)))
     for {
       item <- messages
       msg = Status.text(item)
       screen_name = Status.user.screen_name(item)
-    } yield println("%-15s%s" format (screen_name.toString, msg) )
+    } yield (formatTweet(msg, screen_name) map { println })
   }
 
-  def grep(q: String) {
+  def formatTweet(tweet: String, screenName: String): List[String] =
+    "* <" + screenName + ">" ::
+    "- " + tweet ::
+    "" :: Nil
+
+  def grouped(tweet: String, size: Int): List[String] = {
+    val buffer = new scala.collection.mutable.ListBuffer[String]
+    var s = tweet
+    while (s.length > size) {
+      buffer += s take size
+      s = s drop size
+    }
+    buffer += s
+    buffer.toList
+  }
+
+  def grep(q: String, count: Int) {
     for {
-      item <- http(Search(q, ("show_user", "true")))
+      item <- http(Search(q, ("show_user", "true"), ("rpp", count)))
       msg = Search.text(item)
       from_user = Search.from_user(item)
-    } yield println("%-15s%s" format (from_user.toString, msg) )
+    } yield (formatTweet(msg, from_user) map { println })
   }
 
-  def commit(tweet: String, token: Token): String =
-    if (tweet.length > 140) "%d characters?" format tweet.length
+  def commit(tweet: String, token: Token) {
+    if (tweet.length > 140) println("%d characters?" format tweet.length)
     else http(Status.update(tweet, consumer, token) ># { js =>
       // handling the Status.update response as JSON, we take what we want
       val Status.user.screen_name(screen_name) = js
       val Status.id(id) = js
 
       // this goes back to our user
-      "posted " + (Twitter.host / screen_name / "status" / id.toString to_uri)
+      println("posted " + (Twitter.host / screen_name / "status" / id.toString to_uri))
     })
+  }
 
   def cat(token: Token) {
     // get us some tweets
@@ -204,8 +224,24 @@ class TwitterProcessor extends Processor {
   }
 
   trait Symbol { val value: String }
+  object Symbol {
+    def unapply(symbol: Symbol): Option[String] = symbol match {
+      case DashValue(x) => None
+      case _            => Some(symbol.value)
+    }
+  }
+
+  object DashNumber {
+    def unapply(symbol: Symbol): Option[Int] = symbol match {
+      case DashValue(x) if x matches """\d+""" => Some(x.toInt)
+      case _                                  => None
+    }
+  }
+
   case class Unquoted(value: String) extends Symbol
   case class Quoted(value: String) extends Symbol
+  case class DashValue(value: String) extends Symbol
+
   abstract class ScanState
   case object NoWord extends ScanState
   case object InSQ extends ScanState
@@ -226,7 +262,8 @@ class TwitterProcessor extends Processor {
     }
 
     def grabUnquoted {
-      words append Unquoted(word.toString)
+      if (word.toString startsWith "-") words append DashValue(word.toString drop 1)
+      else words append Unquoted(word.toString)
       word = new StringBuilder
       state = NoWord
     }
@@ -273,8 +310,7 @@ class TwitterProcessor extends Processor {
       case InDQ         => Left("Expected \" but met EOL")
       case e: ScanError => Left(e.value)
       case _ =>
-        if (!word.toString.isEmpty)
-          words append Unquoted(word.toString)
+        if (!word.toString.isEmpty) grabUnquoted
 
         Right(words.toList)
     }
