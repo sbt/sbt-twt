@@ -25,58 +25,58 @@ class TwitterProcessor extends Processor {
 
   val defaultCount = 12
 
-  // ---BY YOUR COMMAND---
-  def apply(label: String, project: Project, onFailure: Option[String], arg: String): ProcessorResult = {
-    project.log.debug("TwitterProcessor(%s, %s, %s, %s)".format(label, project, onFailure, arg))
+  // sbt interface
+  def apply(label: String, project: Project, onFailure: Option[String], args: String): ProcessorResult = {
+    project.log.debug("TwitterProcessor(%s, %s, %s, %s)".format(label, project, onFailure, args))
     def succeed(cmds: String*) = new Success(project, onFailure, cmds: _*)
-
-    Symbol.scan(arg.trim) match {
-      case Left(msg) => project.log.error(msg)
+    Symbol.scan(args.trim) match {
+      case Left(msg)      => project.log.error(msg)
       case Right(symbols) =>
-        if (!conf.exists) buildDefaultConfig()
-
-        C.configure(conf.getPath)
-
-        val token = Token(C.config.configMap("access").asMap)
-        val commitCmd = List("commit", "ci")
-        val grepCmd = List("grep", "search", "?")
-
         project.log.debug(symbols.toString)
-        symbols match {
-          case Nil => usage
-
-          case Unquoted("log") :: options => token map { t => implicit val tok = t
-              homeTimeline(count(options))
-            } getOrElse { get_authorization(symbols) }
-
-          case Unquoted(s) :: Quoted(tweet) :: Nil if commitCmd contains s => token map { t => implicit val tok = t
-              commit(tweet)
-            } getOrElse { get_authorization(symbols) }
-
-          case Unquoted("rt") :: UnquotedNumber(id) :: Nil => token map { t => implicit val tok = t
-              postRequest("retweeted", Status / "retweet/%s.json".format(id.toString))
-            } getOrElse { get_authorization(symbols) }
-
-          case Unquoted("fav") :: UnquotedNumber(id) :: Nil => token map { t => implicit val tok = t
-              postRequest("faved", Twitter.host / "favorites/create/%s.json".format(id.toString))
-            } getOrElse { get_authorization(symbols) }
-
-          case Unquoted("fav") :: UnquotedNumber(id) :: DashValue("d") :: Nil => token map { t =>
-               implicit val tok = t
-               postRequest("unfaved", Twitter.host / "favorites/destroy/%s.json".format(id.toString))
-             } getOrElse { get_authorization(symbols) }
-
-          case Unquoted(s) :: Symbol(q) :: options if grepCmd contains s => grep(q, count(options))
-
-          case Unquoted("clearauth") :: Nil =>
-            conf.delete()
-            println("OAuth credentials deleted.")
-          case Unquoted("pin") :: UnquotedNumber(pin) :: Nil => get_authorization(symbols)
-          case xs => usage
-        }
+        apply(symbols)
     }
-
     succeed()
+  }
+
+  def apply(symbols: List[Symbol]) {
+    if (!conf.exists) buildDefaultConfig()
+    C.configure(conf.getPath)
+    val token = Token(C.config.configMap("access").asMap)
+    val commitCmd = List("commit", "ci")
+    val grepCmd = List("grep", "search", "?")
+
+    symbols match {
+      case Nil => usage
+
+      case Unquoted("log") :: options => token map { t => implicit val tok = t
+          homeTimeline(count(options))
+        } getOrElse { get_authorization(symbols) }
+
+      case Unquoted(s) :: Quoted(tweet) :: Nil if commitCmd contains s => token map { t => implicit val tok = t
+          commit(tweet)
+        } getOrElse { get_authorization(symbols) }
+
+      case Unquoted("rt") :: UnquotedNumber(id) :: Nil => token map { t => implicit val tok = t
+          postRequest("retweeted", Status / "retweet/%s.json".format(id.toString))
+        } getOrElse { get_authorization(symbols) }
+
+      case Unquoted("fav") :: UnquotedNumber(id) :: Nil => token map { t => implicit val tok = t
+          postRequest("faved", Twitter.host / "favorites/create/%s.json".format(id.toString))
+        } getOrElse { get_authorization(symbols) }
+
+      case Unquoted("fav") :: UnquotedNumber(id) :: DashValue("d") :: Nil => token map { t =>
+           implicit val tok = t
+           postRequest("unfaved", Twitter.host / "favorites/destroy/%s.json".format(id.toString))
+         } getOrElse { get_authorization(symbols) }
+
+      case Unquoted(s) :: Symbol(q) :: options if grepCmd contains s => grep(q, count(options))
+
+      case Unquoted("clearauth") :: Nil =>
+        conf.delete()
+        println("OAuth credentials deleted.")
+      case Unquoted("pin") :: UnquotedNumber(pin) :: Nil => get_authorization(symbols)
+      case xs => usage
+    }
   }
 
   def count(options: List[Symbol]): BigDecimal = (options flatMap { // 2.7 doesn't have collect?
