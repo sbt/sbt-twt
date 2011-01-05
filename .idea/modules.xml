@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/sbt-twt.iml" filepath="$PROJECT_DIR$/sbt-twt.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../dispatch/twitter/twitter.iml" filepath="$PROJECT_DIR$/../dispatch/twitter/twitter.iml" />
     </modules>
   </component>
 </project>

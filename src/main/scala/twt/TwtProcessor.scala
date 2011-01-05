@@ -17,13 +17,14 @@ class TwitterProcessor extends Processor {
 
   val home = :/("twitter.com")
   // this will be our datastore
-  val conf = new java.io.File(System.getProperty("user.home"), ".twt.conf")
+  val configFile = new java.io.File(System.getProperty("user.home"), ".twt.conf")
   // OAuth application key, top-secret
   val consumer = Consumer("Km1qVJOqYKDtFhlx6W6s3Q", "rgru7uaRGGm2fhrDrti4m8H5b8YliiohQyBcM17gBg")
   // one single-threaded http access point, please!
   val http = new Http
 
   val defaultCount = 12
+  val largeDefaultCount = 100
 
   // sbt interface
   def apply(label: String, project: Project, onFailure: Option[String], args: String): ProcessorResult = {
@@ -39,8 +40,8 @@ class TwitterProcessor extends Processor {
   }
 
   def apply(symbols: List[Symbol]) {
-    if (!conf.exists) buildDefaultConfig()
-    C.configure(conf.getPath)
+    if (!configFile.exists) buildDefaultConfig()
+    C.configure(configFile.getPath)
     val token = Token(C.config.configMap("access").asMap)
     val commitCmd = List("commit", "ci")
     val grepCmd = List("grep", "search", "?")
@@ -49,11 +50,19 @@ class TwitterProcessor extends Processor {
       case Nil => usage
 
       case Unquoted("log") :: options => token map { t => implicit val tok = t
-          homeTimeline(count(options))
+          homeTimeline(count(options), None)
         } getOrElse { get_authorization(symbols) }
 
-      case Unquoted(s) :: Quoted(tweet) :: Nil if commitCmd contains s => token map { t => implicit val tok = t
-          commit(tweet)
+      case Unquoted("unread") :: options => token map { t => implicit val tok = t
+          homeTimeline(count(options, largeDefaultCount), loadSinceId)
+        } getOrElse { get_authorization(symbols) }
+
+      case Unquoted(s) :: Symbol(status) :: Nil if commitCmd contains s => token map { t => implicit val tok = t
+          tweet(status, None)
+        } getOrElse { get_authorization(symbols) }
+
+      case Unquoted("re") :: UnquotedNumber(id) :: Symbol(status) :: Nil => token map { t => implicit val tok = t
+          tweet(status, Some(id))
         } getOrElse { get_authorization(symbols) }
 
       case Unquoted("rt") :: UnquotedNumber(id) :: Nil => token map { t => implicit val tok = t
@@ -72,36 +81,51 @@ class TwitterProcessor extends Processor {
       case Unquoted(s) :: Symbol(q) :: options if grepCmd contains s => grep(q, count(options))
 
       case Unquoted("clearauth") :: Nil =>
-        conf.delete()
+        configFile.delete()
         println("OAuth credentials deleted.")
       case Unquoted("pin") :: UnquotedNumber(pin) :: Nil => get_authorization(symbols)
       case xs => usage
     }
   }
 
-  def count(options: List[Symbol]): BigDecimal = (options flatMap { // 2.7 doesn't have collect?
+  def count(options: List[Symbol]): BigDecimal = count(options, defaultCount)
+
+  def count(options: List[Symbol], defCount: BigDecimal): BigDecimal = (options flatMap { // 2.7 doesn't have collect?
     case DashNumber(x) => Some(x)
     case _             => None
   }).toList match {
     case x :: xs => x
-    case _       => defaultCount
+    case _       => defCount
   }
 
   def usage {
     println("usage: twt <command>")
     println("  twt log [-12]            : prints 12 tweets from the timeline.")
+    println("  twt unread [-100]        : prints unread tweets from the timeline.")
     println("  twt grep #scala [-12]    : searches for #scala. also as twt ?")
     println("  twt commit \"tweet!\"      : tweets quoted string. also as twt ci.")
-    println("  twt rt 21499972767715328 : retweets the tweet with given id.")
-    println("  twt fav <id> [-d]        : faves/unfaves the tweet with given id.")
+    println("  twt re <id> \"tweet!\"     : tweets quoted string in reply to <id>.")
+    println("  twt rt 21499972767715328 : retweets the tweet with <id>.")
+    println("  twt fav <id> [-d]        : faves/unfaves the tweet with  <id>.")
     println("  twt pin 1234567          : authorizes twt to access twitter.")
     println("  twt clearauth            : clears the authorization.")
   }
 
-  def homeTimeline(count: BigDecimal)(implicit token: Token) {
-    for {
-      item <- http(Status / "home_timeline.json" <<? Map("count" -> count)
+  def homeTimeline(count: BigDecimal, sinceId: Option[BigDecimal])(implicit token: Token) {
+    val param = sinceId map { si =>
+      Map("count" -> count, "since_id" -> si)
+    } getOrElse { Map("count" -> count) }
+    val statuses = http(Status / "home_timeline.json" <<? param
         <@ (consumer, token) ># (list ! obj) )
+    statuses match {
+      case x :: xs =>
+        val Status.id(id) = x
+        saveSinceId(id)
+      case _ => // do nothing
+    }
+
+    for {
+      item <-statuses
       id = Status.id(item)
       msg = Status.text(item)
       screen_name = Status.user.screen_name(item)
@@ -116,6 +140,16 @@ class TwitterProcessor extends Processor {
         formatTweet(id, msg, screen_name) } map { println }
   }
 
+  def loadSinceId = Some(C.config.configMap("statuses")("since_id", "")) map { s =>
+    if (s == "") None
+    else Some(BigDecimal(s))
+  } getOrElse {None}
+
+  def saveSinceId(sinceId: BigDecimal) {
+    C.config.configMap("statuses")("since_id") = sinceId.toString
+    writeConfigFile()
+  }
+
   def friendsTimeline(count: BigDecimal)(implicit token: Token) {
     val messages = http(Status.friends_timeline(consumer, token, ("count", count)))
     for {
@@ -126,9 +160,9 @@ class TwitterProcessor extends Processor {
     } yield (formatTweet(id, msg, screen_name) map { println })
   }
 
-  def formatTweet(id: BigDecimal, tweet: String, screenName: String): List[String] =
+  def formatTweet(id: BigDecimal, status: String, screenName: String): List[String] =
     "* %-22s %s".format("<" + screenName + ">", id.toString) ::
-    "- " + tweet ::
+    "- " + Status.rebracket(status) ::
     "" :: Nil
 
   def grouped(tweet: String, size: Int): List[String] = {
@@ -151,9 +185,13 @@ class TwitterProcessor extends Processor {
     } yield (formatTweet(id, msg, from_user) map { println })
   }
 
-  def commit(tweet: String)(implicit token: Token) {
-    if (tweet.length > 140) println("%d characters?" format tweet.length)
-    else http(Status.update(tweet, consumer, token) ># { js =>
+  def tweet(status: String, inReplyTo: Option[BigDecimal])(implicit token: Token) {
+    val param = inReplyTo map { re =>
+      Map("in_reply_to_status_id" -> re.toString, "status" -> status)
+    } getOrElse { Map("status" -> status) }
+
+    if (status.length > 140) println("%d characters?" format status.length)
+    else http(Status / "update.json" << param <@ (consumer, token) ># { js =>
       println("posted " + statusUri(js)) })
   }
 
@@ -234,32 +272,26 @@ class TwitterProcessor extends Processor {
 
       // a token of some kind: we should save this in the datastore perhaps
       case (message, Some((name, tok))) =>
-        val conf_writer = new java.io.FileWriter(conf)
-        // let us also take this opportunity to set the log level
-        conf_writer write (
-        """ |<log>
-            |  level = "ERROR"
-            |  console = true
-            |</log>
-            |<%s>
-            |  oauth_token = "%s"
-            |  oauth_token_secret = "%s"
-            |</%s>""".stripMargin format (name, tok.value, tok.secret, name)
-        )
-        conf_writer.close
+        C.config.configMap(name)("oauth_token") =  tok.value
+        C.config.configMap(name)("oauth_token_secret") = tok.secret
+        writeConfigFile()
+
         println(message) // for you sir!
     }
   }         // get_authorization
 
   def buildDefaultConfig() {
-    conf.createNewFile()
-    val conf_writer = new java.io.FileWriter(conf)
-    conf_writer write (
-    """ |<log>
-        |  level = "ERROR"
-        |  console = true
-        |</log>""".stripMargin
-    )
-    conf_writer.close
+    configFile.createNewFile()
+    C.configure(configFile.getPath)
+    C.config.configMap("log")("level") =  "ERROR"
+    C.config.configMap("log")("console") = true
+
+    writeConfigFile()
+  }
+
+  def writeConfigFile() {
+    val writer = new java.io.FileWriter(configFile)
+    writer write (C.config.toConfigString)
+    writer.close
   }
 }
