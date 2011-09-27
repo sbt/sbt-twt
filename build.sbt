@@ -4,7 +4,7 @@ name := "sbt-twt"
 
 organization := "com.eed3si9n"
 
-version := "0.2-SNAPSHOT"
+version := "0.2.0"
 
 libraryDependencies ++= Seq("net.databinder" %% "dispatch-oauth" % "0.8.5",
   "net.databinder" %% "dispatch-core" % "0.8.5",
