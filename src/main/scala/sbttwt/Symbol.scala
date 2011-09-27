@@ -1,4 +1,4 @@
-package twt
+package sbttwt
 
 trait Symbol { val value: String }
 object Symbol {
