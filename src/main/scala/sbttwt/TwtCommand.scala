@@ -71,7 +71,8 @@ object TwtCommand {
     (Space ~> token(log | unread | pgrep | commit | reply | retweet | fave | pin | clearAuth))?
   lazy val log    = token("log" ~> countOption(defaultCount)) map { TwtLog(_)}
   lazy val unread = token("unread" ~> countOption(largeDefaultCount)) map { TwtUnread(_)}
-  lazy val pgrep  = token((token("grep") | token("?")) ~> Space ~> token(NotSpace).examples("#scala") ~
+  lazy val pgrep  = token((token("grep") | token("?")) ~> Space ~> 
+    (token(NotSpace).examples("#scala") | doubleQuoted.examples(""""#sbt #scala"""")) ~
     countOption(defaultCount)) map {
     case q ~ n =>  TwtGrep(q, n)
   }
