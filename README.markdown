@@ -1,45 +1,41 @@
 sbt-twt
 =======
 
-sbt-twt is a twitter processor for [simple-built-tool (sbt)][2], forked from @n8han's [dispatch twine][1].
-unlike sbt plugins, [processors][3] are installed to the sbt instance instead of described in project definitions,
-and they add new kind of commands, instead of new type of projects or actions that plugins give.
+sbt-twt is a twitter command for [simple-built-tool (sbt)][2], forked from @n8han's [dispatch twine][1].
 
 ## install it
-`sbt` uses some special commands that are prefixed with '*'.
+add the following to `~/.sbt/plugins/build.sbt`:
 
-    git clone git://github.com/eed3si9n/sbt-twt.git
-    cd sbt-twt
-    sbt publish-local
-    sbt "*twt is com.eed3si9n sbt-twt 0.1"
+    addSbtPlugin("com.eed3si9n" % "sbt-twt" % "0.2.0")
 
-the above adds a new command called `twt`.
+this adds a new command called `twt` with tab completion.
 
 ## uninstall it
+remove the oauth token:
 
     sbt "twt clearauth"
-    sbt "*remove twt"
 
-## upgrade it
-run `sbt "*remove twt"`, then install it.
-
+remove the entry from global `build.sbt`.
+    
 ## twt
 all you have to do now, is start up `sbt`, and in the console type `twt <command>`.
 
     > twt
     usage: twt <command>
-      twt log [-12]            : prints 12 tweets from the timeline.
-      twt unread [-100]        : prints unread tweets from the timeline.
-      twt grep #scala [-12]    : searches for #scala. also as twt ?
-      twt commit "tweet!"      : tweets quoted string. also as twt ci.
-      twt re <id> "tweet!"     : tweets quoted string in reply to <id>.
-      twt rt 21499972767715328 : retweets the tweet with <i.
-      twt fav <id> [-d]        : faves/unfaves the tweet with <id>.
-      twt pin 1234567          : authorizes twt to access twitter.
-      twt clearauth            : clears the authorization.
-    > twt grep sbt-twt -1
-    * <ymnk>
-    - RT @eed3si9n: tweeting from sbt using https://github.com/eed3si9n/sbt-twt #scala
+      twt log [-12]             : prints 12 tweets from the timeline.
+      twt unread [-100]         : prints unread tweets from the timeline.
+      twt grep #scala [-12]     : searches for #scala. also as twt ?
+      twt commit "tweet!"       : tweets quoted string. also as twt ci.
+      twt re <id> "tweet!"      : tweets quoted string in reply to <id>.
+      twt rt 118567297655902208 : retweets the tweet with <id>.
+      twt fav <id> [-d]         : faves/unfaves the tweet with  <id>.
+      twt pin 1234567           : authorizes twt to access twitter.
+      twt clearauth             : clears the authorization.
+    > twt grep [tab]
+    grep "#sbt #scala"   grep #scala
+    > twt grep "#sbt #scala"
+    * <bibixdev>             118465815925374978
+    - bibixdev: #scala #sbt #github pure pleasure!
 
 ### oauth
 since we don't want to either store passwords on machine or send them over wire, it uses OAuth.
@@ -60,6 +56,5 @@ most of the heavy lifting of talking to twitter was done by @n8han's [dispatch][
 you need to add `-Dfile.encoding=UTF-8` in sbt's launch script to render non-ASCII correctly.
 
 [1]: http://dispatch.databinder.net/Twine
-[2]: http://code.google.com/p/simple-build-tool/
-[3]: http://code.google.com/p/simple-build-tool/wiki/Processors
-[4]: http://dispatch.databinder.net/About
+[2]: https://github.com/harrah/xsbt
+[4]: http://dispatch.databinder.net/
