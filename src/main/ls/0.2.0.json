@@ -1,0 +1,35 @@
+
+{
+ "organization":"com.eed3si9n",
+ "name":"sbt-twt",
+ "version":"0.2.0",
+ "description":"sbt plugin to tweet",
+ "site":"",
+ "tags":["sbt","twitter"],
+ "docs":"",
+ "licenses": [],
+ "resolvers": ["http://scala-tools.org/repo-releases"],
+ "dependencies": [{
+   "organization":"net.databinder",
+   "name": "dispatch-oauth",
+   "version": "0.8.5"
+  },{
+   "organization":"net.databinder",
+   "name": "dispatch-core",
+   "version": "0.8.5"
+  },{
+   "organization":"net.databinder",
+   "name": "dispatch-http-json",
+   "version": "0.8.5"
+  },{
+   "organization":"net.databinder",
+   "name": "dispatch-lift-json",
+   "version": "0.8.5"
+  },{
+   "organization":"net.databinder",
+   "name": "dispatch-oauth",
+   "version": "0.8.5"
+  }],
+ "scalas": ["2.9.1"],
+ "sbt": true
+}

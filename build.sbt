@@ -6,6 +6,8 @@ organization := "com.eed3si9n"
 
 version := "0.2.0"
 
+description := "sbt plugin to tweet"
+
 libraryDependencies ++= Seq("net.databinder" %% "dispatch-oauth" % "0.8.5",
   "net.databinder" %% "dispatch-core" % "0.8.5",
   "net.databinder" %% "dispatch-http-json" % "0.8.5",
@@ -33,3 +35,7 @@ publishArtifact in (Compile, packageSrc) := false
 publishMavenStyle := true
 
 resolvers += "twttr.com Repo" at "http://maven.twttr.com"
+
+seq(lsSettings :_*)
+
+LsKeys.tags in LsKeys.lsync := Seq("sbt", "twitter")
