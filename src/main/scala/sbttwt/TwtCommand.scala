@@ -72,12 +72,12 @@ object TwtCommand {
   lazy val log    = token("log" ~> countOption(defaultCount)) map { TwtLog(_)}
   lazy val unread = token("unread" ~> countOption(largeDefaultCount)) map { TwtUnread(_)}
   lazy val pgrep  = token((token("grep") | token("?")) ~> Space ~> 
-    (token(NotSpace).examples("#scala") | doubleQuoted.examples(""""#sbt #scala"""")) ~
+    (token(NotSpace).examples("#scala") | StringBasic.examples("\"#sbt #scala\"")) ~
     countOption(defaultCount)) map {
     case q ~ n =>  TwtGrep(q, n)
   }
-  lazy val commit = (token("commit") | token("ci")) ~> Space ~> doubleQuoted.examples(""""tweet!"""") map { case s => TwtCommit(s) }
-  lazy val reply  = (token("re") ~> Space ~> BigNat.examples("<id>") ~ Space ~ doubleQuoted.examples(""""tweet!"""")) map {
+  lazy val commit = (token("commit") | token("ci")) ~> Space ~> StringBasic.examples("\"tweet!\"") map { case s => TwtCommit(s) }
+  lazy val reply  = (token("re") ~> Space ~> BigNat.examples("<id>") ~ Space ~ StringBasic.examples("\"tweet!\"")) map {
     case id ~ space ~ s => TwtReply(id, s)
   }
   lazy val retweet = token("rt") ~> Space ~> BigNat.examples("<id>") map { case id => TwtRetweet(id) }
@@ -90,7 +90,6 @@ object TwtCommand {
   def countOption(c: Int): Parser[Option[BigDecimal]] = token(Space ~> "-" ~> BigNat.examples(c.toString)).?
     
   lazy val BigNat: Parser[BigDecimal] = mapOrFail(Digit.+)( x => BigDecimal(x.mkString) )
-  lazy val doubleQuoted: Parser[String] = token("\"") ~> charClass(_ != '\"', "non-double quote character").+.string <~("\"")  
   lazy val dashD: Parser[Boolean] = (Space ~> token("-d") ^^^ true).? map { _ getOrElse {false} }
 }
 
