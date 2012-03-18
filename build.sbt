@@ -4,7 +4,7 @@ name := "sbt-twt"
 
 organization := "com.eed3si9n"
 
-version := "0.2.1-SNAPSHOT"
+version := "0.2.1"
 
 description := "sbt plugin to tweet"
 

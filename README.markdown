@@ -6,9 +6,17 @@ sbt-twt is a twitter command for [simple-built-tool (sbt)][2], forked from @n8ha
 ## install it
 add the following to `~/.sbt/plugins/build.sbt`:
 
-    addSbtPlugin("com.eed3si9n" % "sbt-twt" % "0.2.0")
+```scala
+addSbtPlugin("com.eed3si9n" % "sbt-twt" % "0.2.0")
+```
 
 this adds a new command called `twt` with tab completion.
+
+for 0.12.0-M2 add the following to `~/.sbt/plugins/build.sbt`:
+
+```scala
+libraryDependencies += Defaults.sbtPluginExtra("com.eed3si9n" % "sbt-twt" % "0.2.1", "0.12.0-M2", "2.9.1")
+```
 
 ## uninstall it
 remove the oauth token:
